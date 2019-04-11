@@ -61,32 +61,39 @@ func TestClients(t *testing.T) {
 			},
 		},
 	}
-	testConfig := &config.Config{GitlabUrl: "http+unix://" + testserver.TestSocket, Secret: "sssh, it's a secret"}
 
 	testCases := []struct {
 		desc   string
-		client GitlabClient
-		server func([]testserver.TestRequestHandler) (func(), error)
+		secret string
+		server func([]testserver.TestRequestHandler) (func(), string, error)
 	}{
 		{
 			desc:   "Socket client",
-			client: buildSocketClient(testConfig),
+			secret: "sssh, it's a secret",
 			server: testserver.StartSocketHttpServer,
+		},
+		{
+			desc:   "Http client",
+			secret: "sssh, it's a secret",
+			server: testserver.StartHttpServer,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			cleanup, err := tc.server(requests)
+			cleanup, url, err := tc.server(requests)
 			defer cleanup()
 			require.NoError(t, err)
 
-			testBrokenRequest(t, tc.client)
-			testSuccessfulGet(t, tc.client)
-			testSuccessfulPost(t, tc.client)
-			testMissing(t, tc.client)
-			testErrorMessage(t, tc.client)
-			testAuthenticationHeader(t, tc.client)
+			client, err := GetClient(&config.Config{GitlabUrl: url, Secret: tc.secret})
+			require.NoError(t, err)
+
+			testBrokenRequest(t, client)
+			testSuccessfulGet(t, client)
+			testSuccessfulPost(t, client)
+			testMissing(t, client)
+			testErrorMessage(t, client)
+			testAuthenticationHeader(t, client)
 		})
 	}
 }

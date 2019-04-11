@@ -1,9 +1,11 @@
 package gitlabnet
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -29,6 +31,9 @@ func GetClient(config *config.Config) (GitlabClient, error) {
 	if strings.HasPrefix(url, UnixSocketProtocol) {
 		return buildSocketClient(config), nil
 	}
+	if strings.HasPrefix(url, HttpProtocol) {
+		return buildHttpClient(config), nil
+	}
 
 	return nil, fmt.Errorf("Unsupported protocol")
 }
@@ -42,6 +47,27 @@ func normalizePath(path string) string {
 		path = internalApiPath + path
 	}
 	return path
+}
+
+func newRequest(method, host, path string, data interface{}) (*http.Request, error) {
+	path = normalizePath(path)
+
+	var jsonReader io.Reader
+	if data != nil {
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return nil, err
+		}
+
+		jsonReader = bytes.NewReader(jsonData)
+	}
+
+	request, err := http.NewRequest(method, host+path, jsonReader)
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
 }
 
 func parseError(resp *http.Response) error {
@@ -62,6 +88,8 @@ func parseError(resp *http.Response) error {
 func doRequest(client *http.Client, config *config.Config, request *http.Request) (*http.Response, error) {
 	encodedSecret := base64.StdEncoding.EncodeToString([]byte(config.Secret))
 	request.Header.Set(secretHeaderName, encodedSecret)
+
+	request.Header.Add("Content-Type", "application/json")
 
 	response, err := client.Do(request)
 	if err != nil {
